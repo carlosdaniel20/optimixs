@@ -1,0 +1,47 @@
+<?php
+declare(strict_types=1);
+
+namespace App\Controllers;
+
+use mysqli;
+use Psr\Http\Message\ResponseInterface as Response;
+use Psr\Http\Message\ServerRequestInterface as Request;
+
+class DashboardController
+{
+    public function index(Request $request, Response $response, mysqli $db): Response
+    {
+        $stats = ['libri'=>0,'utenti'=>0,'prestiti_in_corso'=>0,'autori'=>0,'prestiti_pendenti'=>0,'pickup_pronti'=>0];
+        $lastBooks = $active = $overdue = $pending = $pickupLoans = $scheduledLoans = $reservations = $calendarEvents = [];
+
+        try {
+            $repo = new \App\Models\DashboardStats($db);
+            $stats = $repo->counts();
+            $lastBooks = $repo->lastBooks();
+            $active = $repo->activeLoans();
+            $overdue = $repo->overdueLoans();
+            $pending = $repo->pendingLoans(6);
+            $pickupLoans = $repo->pickupReadyLoans(6);
+            $scheduledLoans = $repo->scheduledLoans(6);
+            $reservations = $repo->activeReservations(6);
+            $calendarEvents = $repo->calendarEvents();
+        } catch (\Throwable $e) {
+            \App\Support\SecureLogger::error('Dashboard data loading failed: ' . $e->getMessage());
+            $_SESSION['error_message'] = __('Alcuni dati della dashboard non sono disponibili. Verifica la connessione al database.');
+        }
+
+        // ICS file URL (dynamic generation)
+        $icsUrl = url('/calendar/events.ics');
+
+        ob_start();
+        require __DIR__ . '/../Views/dashboard/index.php';
+        $content = ob_get_clean();
+
+        ob_start();
+        require __DIR__ . '/../Views/layout.php';
+        $html = ob_get_clean();
+
+        $response->getBody()->write($html);
+        return $response;
+    }
+}
